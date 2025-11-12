@@ -978,8 +978,8 @@ module storageEventGridTopic './modules/storage/eventgrid-system-topic.bicep' = 
     name: '${storageAccountName}-topic'
     location: location
     tags: tags
-    storageAccountId: storage.outputs.id
-    topicType: 'Microsoft.Storage.StorageAccounts'
+    storageAccountId: storage.outputs.id // ← Watches THIS storage account
+    topicType: 'Microsoft.Storage.StorageAccounts' // ← Type of events to monitor
   }
 }
 

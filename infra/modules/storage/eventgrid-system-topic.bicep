@@ -24,8 +24,8 @@ resource systemTopic 'Microsoft.EventGrid/systemTopics@2024-06-01-preview' = {
     type: identityType
   }
   properties: {
-    source: storageAccountId
-    topicType: topicType
+    source: storageAccountId  // ← The storage account to monitor
+    topicType: topicType      // ← Type: Microsoft.Storage.StorageAccounts
   }
 }
 

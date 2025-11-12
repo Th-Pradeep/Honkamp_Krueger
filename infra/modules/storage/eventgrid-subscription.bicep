@@ -43,22 +43,22 @@ var containerFilterValues = [for container in containerFilters: '/blobServices/d
 
 resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2024-06-01-preview' = {
   name: name
-  parent: systemTopic
+  parent: systemTopic  // ← Subscribes to the System Topic
   properties: {
     destination: {
       endpointType: 'AzureFunction'
       properties: {
-        resourceId: '${functionAppId}/functions/${functionName}'
+        resourceId: '${functionAppId}/functions/${functionName}'   // ← WHERE to sen
         maxEventsPerBatch: 1
         preferredBatchSizeInKilobytes: 64
       }
     }
     filter: {
-      includedEventTypes: includedEventTypes
-      subjectBeginsWith: subjectBeginsWith
-      subjectEndsWith: subjectEndsWith
+      includedEventTypes: includedEventTypes  // ← WHAT events
+      subjectBeginsWith: subjectBeginsWith    // ← Path filters
+      subjectEndsWith: subjectEndsWith        // ← File extension filters
       enableAdvancedFilteringOnArrays: true
-      advancedFilters: empty(containerFilters) ? [] : [
+      advancedFilters: empty(containerFilters) ? [] : [  // ← Container filters
         {
           operatorType: 'StringContains'
           key: 'subject'
@@ -68,7 +68,7 @@ resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@
     }
     eventDeliverySchema: eventDeliverySchema
     retryPolicy: {
-      maxDeliveryAttempts: maxDeliveryAttempts
+      maxDeliveryAttempts: maxDeliveryAttempts    // ← Retry logic
       eventTimeToLiveInMinutes: eventTimeToLiveInMinutes
     }
   }
