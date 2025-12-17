@@ -15,34 +15,51 @@ bp = df.Blueprint()
 @bp.activity_trigger(input_name="args")
 def extract_text_from_blob(args: dict):
   """
-  Writes the JSON bytes to a blob storage.
+  Writes JSON or XML data to blob storage (silver or gold container).
   Args:
-      args (dict): A dictionary containing the blob name and JSON bytes.
+      args (dict): A dictionary containing:
+          - blob_name: Original blob name
+          - json_str (optional): JSON string to write to silver container
+          - xml_str (optional): XML string to write to gold container
+          - container (optional): Target container override
+          - output_format (optional): 'json' or 'xml'
   """
   try:
-      args['json_bytes'] = args['json_str'].encode('utf-8')
-      
       sourcefile = os.path.splitext(os.path.basename(args['blob_name']))[0]
-      logging.info(f"writeToBlob.py: Writing output to blob {sourcefile}-output.json with source file {sourcefile} and NEXT_STAGE {NEXT_STAGE}")
-      result = write_to_blob(NEXT_STAGE, f"{sourcefile}-output.json", args['json_bytes'])
-      logging.info(f"writeToBlob.py: Result of write_to_blob: {result}")
+      
+      # Determine output format and container
+      output_format = args.get('output_format', 'json')
+      container = args.get('container', NEXT_STAGE)
+      
+      # Encode JSON to bytes
+      json_bytes = args['json_str'].encode('utf-8')
+      
+      # Determine filename based on container
+      if container == 'gold':
+          # Gold container: detailed extraction JSON
+          output_filename = f"{sourcefile}-1099-consolidated.json"
+          logging.info(f"writeToBlob.py: Writing detailed JSON to {container}: {output_filename}")
+      else:
+          # Silver container: classification JSON
+          output_filename = f"{sourcefile}-output.json"
+          logging.info(f"writeToBlob.py: Writing classification JSON to {container}: {output_filename}")
+      
+      # Write to blob storage
+      result = write_to_blob(container, output_filename, json_bytes)
+      
       if result:
-          logging.info(f"writeToBlob.py: Successfully wrote output to blob {args['blob_name']}")
+          logging.info(f"writeToBlob.py: Successfully wrote JSON to {container}: {output_filename}")
           return {
               "success": True,
               "blob_name": args['blob_name'],
-              "output_blob": f"{sourcefile}-output.json"
+              "output_blob": output_filename,
+              "container": container
           }
       else:
-          logging.error(f"Failed to write output to blob {args['blob_name']}")
-          return {
-              "success": False,
-              "error": "Failed to write output"
-          }
+          logging.error(f"writeToBlob.py: Failed to write JSON")
+          return {"success": False, "error": "Failed to write output"}
+              
   except Exception as e:
       error_msg = f"Error writing output for blob {args['blob_name']}: {str(e)}"
       logging.error(error_msg)
-      return {
-          "success": False,
-          "error": error_msg
-      }
+      return {"success": False, "error": error_msg}

@@ -19,16 +19,7 @@
       },
       "deploymentTags":{
         "value": {
-            "Created By": "Tharun",
-            "Created On": "07-11-2025",
-            "Purpose": "AI-Doc-practice",
-            "Region": "eastus2",
-            "tower": "AI",
-            "v-id": "v-thpradeep",
-            "email-id": "v-thpradeep@microsoft.com",
-            "Customer": "Microsoft",
-            "Offering": "AI",
-            "SecurityControl": "Ignore"
+  
         }
       },
       "deployVM": {

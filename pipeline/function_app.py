@@ -4,7 +4,9 @@ import azure.durable_functions as df
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentRequest
 
+# Import all activities
 from activities import getBlobContent, runDocIntel, callAoai, writeToBlob
+from activities import convertPdfToImages, callAoaiVision  # New vision-based activities
 from configuration import Configuration
 
 from pipelineUtils.prompts import load_prompts
@@ -136,31 +138,100 @@ def process_blob(context):
   blob_metadata = context.get_input()
   sub_orchestration_id = context.instance_id 
   logging.info(f"Process Blob sub Orchestration - Processing blob_metadata: {blob_metadata} with sub orchestration id: {sub_orchestration_id}")
-  # Waits for the result of an activity function that retrieves the blob_metadata content
-  text_result = yield context.call_activity("runDocIntel", blob_metadata)
-
-  # Package the data into a dictionary
-  call_aoai_input = {
-      "text_result": text_result,
+  
+  # ====================================================================
+  # NEW WORKFLOW: PDF to Images + Vision-based extraction
+  # ====================================================================
+  
+  # Step 1: Convert PDF to base64 images (one image per page)
+  base64_images = yield context.call_activity("convertPdfToImages", blob_metadata)
+  logging.info(f"Converted PDF to {len(base64_images)} images")
+  
+  # Step 2: Call Azure OpenAI with vision capabilities to analyze the images
+  call_aoai_vision_input = {
+      "base64_images": base64_images,
       "instance_id": sub_orchestration_id 
   }
-
-  json_str = yield context.call_activity("callAoai", call_aoai_input)
   
+  json_str = yield context.call_activity("callAoaiVision", call_aoai_vision_input)
+  
+  # ====================================================================
+  # OLD WORKFLOW: Document Intelligence-based extraction (COMMENTED OUT)
+  # ====================================================================
+  # # Step 1: Extract text using Document Intelligence
+  # text_result = yield context.call_activity("runDocIntel", blob_metadata)
+  # 
+  # # Step 2: Call Azure OpenAI with extracted text
+  # call_aoai_input = {
+  #     "text_result": text_result,
+  #     "instance_id": sub_orchestration_id 
+  # }
+  # 
+  # json_str = yield context.call_activity("callAoai", call_aoai_input)
+  # ====================================================================
+  
+  # Step 3: Write the extracted JSON to the silver container (same for both workflows)
   task_result = yield context.call_activity(
       "writeToBlob", 
       {
           "json_str": json_str, 
           "blob_name": blob_metadata["name"]
       }
+
+      
   )
+  
+  # ====================================================================
+  # GOLD LAYER: JSON Extraction for 1099-CONSOLIDATED documents
+  # ====================================================================
+  # Step 4: Check if document is 1099-CONSOLIDATED and extract detailed JSON
+  gold_result = None
+  try:
+      # Parse the classification result to check document type
+      import json
+      classification_data = json.loads(json_str)
+      document_type = classification_data.get('document_type', '')
+      
+      if document_type == "1099-CONSOLIDATED":
+          logging.info(f"Detected 1099-CONSOLIDATED. Extracting detailed JSON for: {blob_metadata['name']}")
+          
+          # Step 5: Call vision model with detailed JSON extraction prompt
+          gold_extract_input = {
+              "base64_images": base64_images,
+              "instance_id": sub_orchestration_id,
+              "prompt_file": "prompts-xml-extraction.yaml",
+              "output_format": "json"
+          }
+          
+          gold_json_str = yield context.call_activity("callAoaiVision", gold_extract_input)
+          
+          # Step 6: Write detailed JSON to gold container
+          gold_result = yield context.call_activity(
+              "writeToBlob",
+              {
+                  "json_str": gold_json_str,
+                  "blob_name": blob_metadata["name"],
+                  "output_format": "json",
+                  "container": "gold"
+              }
+          )
+          logging.info(f"Gold layer JSON extraction completed: {gold_result}")
+      else:
+          logging.info(f"Document type '{document_type}' is not 1099-CONSOLIDATED. Skipping gold layer extraction.")
+  except Exception as e:
+      logging.error(f"Error during gold layer processing: {e}")
+      gold_result = {"success": False, "error": str(e)}
+  
   return {
       "blob": blob_metadata,
-      "text_result": text_result,
-      "task_result": task_result
+      "image_count": len(base64_images),  # Number of PDF pages processed
+      "task_result": task_result,
+      "gold_extraction": gold_result
   }   
 
 app.register_functions(getBlobContent.bp)
-app.register_functions(runDocIntel.bp)
-app.register_functions(callAoai.bp)
+# app.register_functions(runDocIntel.bp)  # COMMENTED OUT - Using vision-based extraction instead
+# app.register_functions(callAoai.bp)      # COMMENTED OUT - Using callAoaiVision instead
 app.register_functions(writeToBlob.bp)
+app.register_functions(convertPdfToImages.bp)  # NEW - PDF to images conversion
+app.register_functions(callAoaiVision.bp)      # NEW - Vision-based extraction
