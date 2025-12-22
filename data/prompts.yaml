@@ -54,7 +54,7 @@ system_prompt: |
   5. For consolidated brokerage PDFs, use: "document_type": "1099-CONSOLIDATED"
   6. "confidence_score" must be between 0 and 1.
   7. "classification_timestamp" must be current ISO-8601 UTC timestamp.
-  8. "source_file" must match the provided filename.
+  8. "source_file" MUST be the ACTUAL filename provided in the prompt (NOT the example "tax_documents.pdf").
   9. Output ONLY JSON objects — no explanations, no commentary.
 
   EXAMPLE OUTPUT (3-page PDF: W2, 1099-INT, and 2-page Schedule K-1):
@@ -120,5 +120,8 @@ user_prompt: |
   
   Return ONE JSON object for each distinct tax document type found.
   Group multi-page forms with page ranges (e.g., "3-6" for a 4-page form starting at page 3).
+  
+  IMPORTANT: The actual source filename will be provided below. Use that EXACT filename in the "source_file" field,
+  NOT the example filename "tax_documents.pdf" shown in the system prompt examples.
   
   Provide ONLY JSON output — no explanations.

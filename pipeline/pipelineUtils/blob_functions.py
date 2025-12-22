@@ -23,10 +23,10 @@ class BlobMetadata:
     name: str
     url: str
     container: str
+    time_stamp:str
 
     def to_dict(self):
-        return {"name": self.name, "url": self.url, "container": self.container}
-
+        return {"name": self.name, "url": self.url, "container": self.container, "time_stamp": self.time_stamp}
     def to_json(self):
         return json.dumps(self.to_dict(), ensure_ascii=False)
     

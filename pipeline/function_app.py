@@ -35,11 +35,13 @@ async def start_orchestrator_blob(
     event_data = event.get_json()
     blob_url = event_data.get('url')
     blob_subject = event.subject  # e.g., /blobServices/default/containers/bronze/blobs/file.pdf
+    time_stamp = event.event_time
     
     logging.info(f"Event Grid Event Received")
     logging.info(f"Event Type: {event.event_type}")
     logging.info(f"Subject: {blob_subject}")
     logging.info(f"Blob URL: {blob_url}")
+    logging.info(f"Event Time: {time_stamp}")
     
     # ← CHANGE 4: Extract blob name from subject (format: /blobServices/default/containers/{container}/blobs/{name})
     subject_parts = blob_subject.split('/blobs/')
@@ -63,6 +65,7 @@ async def start_orchestrator_blob(
         name=full_blob_name,     # e.g. 'bronze/file.pdf'
         url=blob_url,            # full blob URL
         container=container_name,
+        time_stamp=time_stamp.isoformat()
     )
     logging.info(f"Blob Metadata: {blob_metadata}")
     logging.info(f"Blob Metadata JSON: {blob_metadata.to_dict()}")
@@ -120,6 +123,7 @@ def run(context):
   
   sub_tasks = []
 
+  # Create sub-orchestrator for each blob
   for blob_metadata in input_data:
     logging.info(f"Calling sub orchestrator for blob: {blob_metadata}")
     sub_tasks.append(context.call_sub_orchestrator("ProcessBlob", blob_metadata))
@@ -150,7 +154,8 @@ def process_blob(context):
   # Step 2: Call Azure OpenAI with vision capabilities to analyze the images
   call_aoai_vision_input = {
       "base64_images": base64_images,
-      "instance_id": sub_orchestration_id 
+      "instance_id": sub_orchestration_id,
+      "blob_metadata": blob_metadata
   }
   
   json_str = yield context.call_activity("callAoaiVision", call_aoai_vision_input)

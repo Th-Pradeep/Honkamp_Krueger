@@ -130,7 +130,8 @@ system_prompt: |
         "PayerAddress": "",
         "PayerTIN": "",
         "FirmName": "",
-        "FirmAddress": ""
+        "FirmAddress": "",
+        "source_file": ""
       },
       "Sections": [
         {

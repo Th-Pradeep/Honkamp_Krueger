@@ -29,11 +29,17 @@ def run(inputData: dict):
         instance_id = inputData.get('instance_id')
         prompt_file = inputData.get('prompt_file')
         output_format = inputData.get('output_format', 'json')
+        blob_metadata = inputData.get('blob_metadata', {})
         
         if not base64_images:
             raise ValueError("No images provided in inputData")
         
-        logging.info(f"callAoaiVision.py: Processing {len(base64_images)} images, format={output_format}")
+        # Extract source filename from blob metadata and strip container prefix
+        source_filename = blob_metadata.get('name', 'unknown')
+        # Remove container prefix if present (e.g., "bronze/W2.pdf" -> "W2.pdf")
+        if '/' in source_filename:
+            source_filename = source_filename.split('/', 1)[1]
+        logging.info(f"callAoaiVision.py: Processing {len(base64_images)} images, format={output_format}, source_file={source_filename}")
         
         # Load the prompt configuration (custom or default)
         if prompt_file:
@@ -42,9 +48,12 @@ def run(inputData: dict):
         else:
             prompt_json = load_prompts()
         
-        # Build the user prompt
+        # Build the user prompt with source file information
         user_prompt = prompt_json['user_prompt']
         system_prompt = prompt_json['system_prompt']
+        
+        # Append source file information to the user prompt
+        user_prompt = f"{user_prompt}\n\nIMPORTANT: The source file for these images is: {source_filename}\nYou MUST use this exact filename in the 'source_file' field of the metadata output."
         
         logging.info(f"callAoaiVision.py: User prompt: {user_prompt}")
         logging.info(f"callAoaiVision.py: System prompt: {system_prompt}")
