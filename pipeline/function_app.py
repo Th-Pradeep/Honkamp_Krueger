@@ -155,7 +155,8 @@ def process_blob(context):
   call_aoai_vision_input = {
       "base64_images": base64_images,
       "instance_id": sub_orchestration_id,
-      "blob_metadata": blob_metadata
+      "blob_metadata": blob_metadata,
+      "upload_timestamp": blob_metadata.get("time_stamp")  # Pass the blob upload time
   }
   
   json_str = yield context.call_activity("callAoaiVision", call_aoai_vision_input)
@@ -205,7 +206,8 @@ def process_blob(context):
               "base64_images": base64_images,
               "instance_id": sub_orchestration_id,
               "prompt_file": "prompts-xml-extraction.yaml",
-              "output_format": "json"
+              "output_format": "json",
+              "upload_timestamp": blob_metadata.get("time_stamp")  # Pass the blob upload time
           }
           
           gold_json_str = yield context.call_activity("callAoaiVision", gold_extract_input)

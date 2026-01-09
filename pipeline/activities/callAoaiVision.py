@@ -3,6 +3,7 @@ import logging
 from pipelineUtils.prompts import load_prompts, load_prompts_from_blob
 from pipelineUtils.azure_openai import run_prompt_with_images
 import json
+from datetime import datetime, timezone
 
 name = "callAoaiVision"
 bp = df.Blueprint()
@@ -73,12 +74,69 @@ def run(inputData: dict):
         elif response_content.startswith('```') and response_content.endswith('```'):
             response_content = response_content.strip('`').strip()
         
-        # Validate that it's proper JSON
+        # Get the upload timestamp from inputData (from event.event_time)
+        upload_timestamp = inputData.get('upload_timestamp')
+        
+        # If upload_timestamp is not available, fall back to current time
+        if not upload_timestamp:
+            upload_timestamp = datetime.now(timezone.utc).isoformat()
+            logging.warning(f"callAoaiVision.py: No upload_timestamp provided, using current time")
+        
+        logging.info(f"callAoaiVision.py: Using timestamp: {upload_timestamp}")
+        
+        # Handle multiple JSON objects separated by newlines (common AI response format)
         try:
-            json.loads(response_content)
-            logging.info(f"callAoaiVision.py: Successfully parsed JSON response")
+            # First, try to parse as a single JSON object or array
+            parsed_response = json.loads(response_content)
+            
+            # Handle both single document and array of documents
+            if isinstance(parsed_response, list):
+                # Multiple documents in array
+                for doc in parsed_response:
+                    if isinstance(doc, dict) and 'metadata' in doc:
+                        doc['metadata']['classification_timestamp'] = upload_timestamp
+                logging.info(f"callAoaiVision.py: Updated {len(parsed_response)} documents with timestamp {upload_timestamp}")
+            elif isinstance(parsed_response, dict):
+                # Single document
+                if 'metadata' in parsed_response:
+                    parsed_response['metadata']['classification_timestamp'] = upload_timestamp
+                    logging.info(f"callAoaiVision.py: Updated single document with timestamp {upload_timestamp}")
+            
+            # Convert back to JSON string
+            response_content = json.dumps(parsed_response, indent=2)
+            
         except json.JSONDecodeError as e:
-            logging.warning(f"callAoaiVision.py: Response is not valid JSON: {e}")
+            # If single parse fails, try parsing multiple JSON objects separated by newlines
+            logging.info(f"callAoaiVision.py: Single JSON parse failed, trying multi-object parse")
+            try:
+                lines = response_content.strip().split('\n')
+                json_objects = []
+                current_obj = ""
+                brace_count = 0
+                
+                for line in lines:
+                    current_obj += line + "\n"
+                    brace_count += line.count('{') - line.count('}')
+                    
+                    # When braces are balanced, we have a complete JSON object
+                    if brace_count == 0 and current_obj.strip():
+                        try:
+                            obj = json.loads(current_obj)
+                            if isinstance(obj, dict) and 'metadata' in obj:
+                                obj['metadata']['classification_timestamp'] = upload_timestamp
+                            json_objects.append(obj)
+                            current_obj = ""
+                        except json.JSONDecodeError:
+                            continue
+                
+                if json_objects:
+                    logging.info(f"callAoaiVision.py: Updated {len(json_objects)} documents with timestamp {upload_timestamp}")
+                    response_content = '\n'.join([json.dumps(obj, indent=2) for obj in json_objects])
+                else:
+                    logging.warning(f"callAoaiVision.py: Could not parse response as JSON: {e}")
+                    
+            except Exception as parse_error:
+                logging.error(f"callAoaiVision.py: Error parsing multi-object JSON: {parse_error}")
         
         # Return the response
         return response_content
