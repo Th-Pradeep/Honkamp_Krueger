@@ -144,18 +144,13 @@ def process_blob(context):
   logging.info(f"Process Blob sub Orchestration - Processing blob_metadata: {blob_metadata} with sub orchestration id: {sub_orchestration_id}")
   
   # ====================================================================
-  # NEW WORKFLOW: PDF to Images + Vision-based extraction
+  # NEW WORKFLOW: PDF to Images + Vision-based extraction (Combined)
   # ====================================================================
   
-  # Step 1: Convert PDF to base64 images (one image per page)
-  base64_images = yield context.call_activity("convertPdfToImages", blob_metadata)
-  logging.info(f"Converted PDF to {len(base64_images)} images")
-  
-  # Step 2: Call Azure OpenAI with vision capabilities to analyze the images
+  # Step 1: Convert PDF to images and call Vision API (combined activity)
   call_aoai_vision_input = {
-      "base64_images": base64_images,
-      "instance_id": sub_orchestration_id,
       "blob_metadata": blob_metadata,
+      "instance_id": sub_orchestration_id,
       "upload_timestamp": blob_metadata.get("time_stamp")  # Pass the blob upload time
   }
   
@@ -201,9 +196,9 @@ def process_blob(context):
       if document_type == "1099-CONSOLIDATED":
           logging.info(f"Detected 1099-CONSOLIDATED. Extracting detailed JSON for: {blob_metadata['name']}")
           
-          # Step 5: Call vision model with detailed JSON extraction prompt
+          # Step 5: Call vision model with detailed JSON extraction prompt (combined activity)
           gold_extract_input = {
-              "base64_images": base64_images,
+              "blob_metadata": blob_metadata,
               "instance_id": sub_orchestration_id,
               "prompt_file": "prompts-xml-extraction.yaml",
               "output_format": "json",
@@ -231,7 +226,6 @@ def process_blob(context):
   
   return {
       "blob": blob_metadata,
-      "image_count": len(base64_images),  # Number of PDF pages processed
       "task_result": task_result,
       "gold_extraction": gold_result
   }   
@@ -240,5 +234,5 @@ app.register_functions(getBlobContent.bp)
 # app.register_functions(runDocIntel.bp)  # COMMENTED OUT - Using vision-based extraction instead
 # app.register_functions(callAoai.bp)      # COMMENTED OUT - Using callAoaiVision instead
 app.register_functions(writeToBlob.bp)
-app.register_functions(convertPdfToImages.bp)  # NEW - PDF to images conversion
-app.register_functions(callAoaiVision.bp)      # NEW - Vision-based extraction
+# app.register_functions(convertPdfToImages.bp)  # COMMENTED OUT - Now combined with callAoaiVision
+app.register_functions(callAoaiVision.bp)      # NEW - Combined PDF conversion and vision-based extraction

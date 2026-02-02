@@ -1,39 +1,81 @@
 import azure.durable_functions as df
 import logging
+import base64
+import fitz  # PyMuPDF
 from pipelineUtils.prompts import load_prompts, load_prompts_from_blob
 from pipelineUtils.azure_openai import run_prompt_with_images
+from pipelineUtils.blob_functions import get_blob_content
 import json
 from datetime import datetime, timezone
 
 name = "callAoaiVision"
 bp = df.Blueprint()
 
+def normalize_blob_name(container: str, raw_name: str) -> str:
+    """Strip container prefix if included in the name."""
+    if raw_name.startswith(container + "/"):
+        return raw_name[len(container) + 1:]
+    return raw_name
+
 @bp.function_name(name)
 @bp.activity_trigger(input_name="inputData")
 def run(inputData: dict):
     """
-    Calls the Azure OpenAI service with vision capabilities to analyze PDF images.
+    Converts PDF to images and calls Azure OpenAI Vision API to analyze them.
     
     Args:
         inputData (dict): Dictionary containing:
-            - base64_images (list): List of base64-encoded images from PDF pages
+            - blob_metadata (dict): Blob metadata with 'name', 'container', 'url'
             - instance_id (str): Pipeline instance ID for logging
             - prompt_file (optional): Custom prompt file for specific extraction (e.g., XML)
             - output_format (optional): 'json' (default) or 'xml'
+            - upload_timestamp (optional): Timestamp when blob was uploaded
     
     Returns:
         str: The JSON or XML response from the Azure OpenAI service
     """
     try:
         # Extract input data
-        base64_images = inputData.get('base64_images')
+        blob_metadata = inputData.get('blob_metadata', {})
         instance_id = inputData.get('instance_id')
         prompt_file = inputData.get('prompt_file')
         output_format = inputData.get('output_format', 'json')
-        blob_metadata = inputData.get('blob_metadata', {})
         
-        if not base64_images:
-            raise ValueError("No images provided in inputData")
+        if not blob_metadata:
+            raise ValueError("No blob_metadata provided in inputData")
+        
+        # Step 1: Convert PDF to images
+        logging.info(f"Converting PDF to images: {blob_metadata.get('name')}")
+        blob_name = normalize_blob_name(blob_metadata["container"], blob_metadata["name"])
+        
+        # Get PDF content from blob storage
+        blob_bytes = get_blob_content(
+            container_name=blob_metadata["container"],
+            blob_path=blob_name
+        )
+        logging.info(f"Retrieved PDF blob, size: {len(blob_bytes)} bytes")
+
+        # Convert PDF to images using PyMuPDF
+        base64_images = []
+        with fitz.open(stream=blob_bytes, filetype='pdf') as doc:
+            logging.info(f"PDF has {len(doc)} pages")
+            
+            for page_num, page in enumerate(doc):
+                # Render page to pixmap (image)
+                pix = page.get_pixmap()
+                
+                # Convert pixmap to PNG bytes
+                img_bytes = pix.tobytes("png")
+                
+                # Encode to base64
+                b64 = base64.b64encode(img_bytes).decode("utf-8")
+                base64_images.append(b64)
+                
+                logging.info(f"Converted page {page_num + 1}/{len(doc)} to image")
+        
+        logging.info(f"Successfully converted PDF to {len(base64_images)} images")
+        
+        # Step 2: Call Azure OpenAI Vision API with the images
         
         # Extract source filename from blob metadata and strip container prefix
         source_filename = blob_metadata.get('name', 'unknown')
